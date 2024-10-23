@@ -14,6 +14,7 @@ def get_resource_path(audio_file: Path) -> Path:
     project_root = current_file_path.parent
     return project_root / "data" / "audio" / audio_file
 
+
 class TextToAudio:
     def __init__(self):
         pass
@@ -25,6 +26,7 @@ class TextToAudio:
         os.remove("tmp.mp3")
         return audio
 
+
 class Question:
     text: str
     audio: AudioSegment
@@ -33,9 +35,11 @@ class Question:
         self.text = text
         self.audio = audio
 
+
 class Answer:
     text: str
     correct: bool
+
 
 class App:
     answers: list[Answer]
@@ -63,12 +67,12 @@ class App:
         tta = TextToAudio()
 
         self.questions = []
-        j = len([name for name in os.listdir("./tasks") if os.path.isfile(os.path.join("./tasks", name))])
-        for i in range(1, j+1):
-            with open(f"tasks/{i}.txt", "r") as f:
-                question_text = f.readline().strip()
-            question_audio = tta.convert(question_text)
-            self.questions.append(Question(text=question_text, audio=question_audio))
+        if os.path.exists("questions/questions.txt"):
+            with open("questions/questions.txt", "r") as f:
+                for line in f:
+                    text = line.strip()
+                    audio = tta.convert(text)
+                    self.questions.append(Question(text, audio))
 
         self.answers = []
         if os.path.exists("answers/answers.txt"):
@@ -192,7 +196,6 @@ class App:
         if self.current_position >= len(self.questions) - 1:
             self.finish_popup()
 
-
     def finish_popup(self):
         self._next_question_button["state"] = "disabled"
         self._user_input["state"] = "disabled"
@@ -233,7 +236,7 @@ class App:
 
         percent_label = tk.Label(
             popup,
-            text=f"Percent: {int(self.correct/(self.correct+self.wrong)*100)}%",
+            text=f"Percent: {int(self.correct / (self.correct + self.wrong) * 100)}%",
             font=("Helvetica", 20),
         )
         percent_label.configure(background="black", foreground="white")
@@ -246,6 +249,7 @@ class App:
             return
         self.current_position += 1
         self._next_question_button["state"] = "disabled"
+        self._check_button["state"] = "normal"
         self._user_input["state"] = "normal"
         self._user_input.delete("1.0", "end")
         self.play_question()
@@ -254,8 +258,10 @@ class App:
     def window(self):
         return self._window
 
+
 def main():
     app = App()
     app.window.mainloop()
+
 
 main()
