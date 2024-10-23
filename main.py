@@ -2,7 +2,9 @@ import os
 import tkinter as tk
 from pathlib import Path
 from threading import Thread
+from time import sleep
 
+from gtts import gTTS
 from pydub import AudioSegment
 from pydub.playback import play
 
@@ -11,6 +13,17 @@ def get_resource_path(audio_file: Path) -> Path:
     current_file_path = Path(__file__)
     project_root = current_file_path.parent
     return project_root / "data" / "audio" / audio_file
+
+class TextToAudio:
+    def __init__(self):
+        pass
+
+    def convert(self, text: str) -> AudioSegment:
+        tts = gTTS(text, lang="pl")
+        tts.save("tmp.mp3")
+        audio = AudioSegment.from_mp3("tmp.mp3")
+        os.remove("tmp.mp3")
+        return audio
 
 class Question:
     text: str
@@ -47,12 +60,14 @@ class App:
         self.wrong = 0
         self.current_position = 0
 
+        tta = TextToAudio()
+
         self.questions = []
-        loop = len([name for name in os.listdir("./tasks") if os.path.isfile(os.path.join("./tasks", name))])
-        for i in range(1, int(loop/2)+1):
-            with open(f"./tasks/{i}.txt", "r") as f:
-                question_text = f.read()
-            question_audio = AudioSegment.from_mp3(f"./tasks/{i}.mp3")
+        j = len([name for name in os.listdir("./tasks") if os.path.isfile(os.path.join("./tasks", name))])
+        for i in range(1, j+1):
+            with open(f"tasks/{i}.txt", "r") as f:
+                question_text = f.readline().strip()
+            question_audio = tta.convert(question_text)
             self.questions.append(Question(text=question_text, audio=question_audio))
 
         self.answers = []
@@ -135,19 +150,17 @@ class App:
         self._check_button.bind("<ButtonPress>", self.check_answer)
         self._check_button.grid(row=4, column=0, columnspan=3)
 
-        if self.current_position == len(self.questions):
+        if self.current_position >= len(self.questions):
             self.finish_popup()
 
     def key_pressed(self, event):
         if event.keysym == "Return":
             self.check_answer()
-        elif event.keysym == "space":
-            self.play_question(event)
 
     def play_question(self, event=None):
         if self._question_button.config("state")[-1] == "disabled":
             return
-        play(self.questions[self.current_position].audio)
+        Thread(target=play, args=(self.questions[self.current_position].audio,)).start()
 
     def check_answer(self, event=None):
         if self._check_button.config("state")[-1] == "disabled":
@@ -176,9 +189,8 @@ class App:
             for answer in self.answers:
                 f.write(f"{answer.text},{answer.correct}\n")
 
-        if self.current_position == len(self.questions) - 1:
+        if self.current_position >= len(self.questions) - 1:
             self.finish_popup()
-        self.current_position += 1
 
 
     def finish_popup(self):
@@ -235,6 +247,8 @@ class App:
         self.current_position += 1
         self._next_question_button["state"] = "disabled"
         self._user_input["state"] = "normal"
+        self._user_input.delete("1.0", "end")
+        self.play_question()
 
     @property
     def window(self):
