@@ -2,7 +2,6 @@ import os
 import tkinter as tk
 from pathlib import Path
 from threading import Thread
-from time import sleep
 
 from gtts import gTTS
 from pydub import AudioSegment
@@ -39,6 +38,10 @@ class Question:
 class Answer:
     text: str
     correct: bool
+
+    def __init__(self, text: str = "", correct: bool = True):
+        self.text = text
+        self.correct = correct
 
 
 class App:
@@ -144,8 +147,6 @@ class App:
         self._next_question_button.bind("<ButtonPress>", self.next_question)
         self._next_question_button.grid(row=4, column=2, columnspan=3)
 
-        self._next_question_button["state"] = "disabled"
-
         self._check_button = tk.Button(self._window, text="Check answer")
         self._check_button.configure(background="black", foreground="white")
         self._check_button.configure(
@@ -248,10 +249,17 @@ class App:
         if self._next_question_button.config("state")[-1] == "disabled":
             return
         self.current_position += 1
-        self._next_question_button["state"] = "disabled"
         self._check_button["state"] = "normal"
         self._user_input["state"] = "normal"
         self._user_input.delete("1.0", "end")
+        self.answers.append(Answer("-", True))
+        with open("answers/answers.txt", "w") as f:
+            for answer in self.answers:
+                f.write(f"{answer.text},{answer.correct}\n")
+        self._correct_label["text"] = f"Correct: {self.correct}"
+        if self.current_position >= len(self.questions):
+            self.finish_popup()
+            return
         self.play_question()
 
     @property
