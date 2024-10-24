@@ -1,56 +1,12 @@
-import os
-import tkinter as tk
-from pathlib import Path
-from threading import Thread
-
-from gtts import gTTS
 from pydub import AudioSegment
+from .question_server import Questions, Answer
+import tkinter as tk
+from .misc import get_resource_path
+from threading import Thread
 from pydub.playback import play
 
-
-def get_resource_path(audio_file: Path) -> Path:
-    current_file_path = Path(__file__)
-    project_root = current_file_path.parent
-    return project_root / "data" / "audio" / audio_file
-
-
-class TextToAudio:
-    def __init__(self):
-        pass
-
-    def convert(self, text: str) -> AudioSegment:
-        tts = gTTS(text, lang="pl")
-        tts.save("tmp.mp3")
-        audio = AudioSegment.from_mp3("tmp.mp3")
-        os.remove("tmp.mp3")
-        return audio
-
-
-class Question:
-    text: str
-    audio: AudioSegment
-
-    def __init__(self, text: str, audio: AudioSegment):
-        self.text = text
-        self.audio = audio
-
-
-class Answer:
-    text: str
-    correct: bool
-
-    def __init__(self, text: str = "", correct: bool = True):
-        self.text = text
-        self.correct = correct
-
-
 class App:
-    answers: list[Answer]
-    questions: list[Question]
-    current_position: int
-
-    correct: int
-    wrong: int
+    _questions: Questions
 
     time_start: float
     time_taken: float
@@ -62,35 +18,8 @@ class App:
     _correct_label: tk.Label
     _wrong_label: tk.Label
 
-    def __init__(self):
-        self.correct = 0
-        self.wrong = 0
-        self.current_position = 0
-
-        tta = TextToAudio()
-
-        self.questions = []
-        if os.path.exists("questions/questions.txt"):
-            with open("questions/questions.txt", "r") as f:
-                for line in f:
-                    text = line.strip()
-                    audio = tta.convert(text)
-                    self.questions.append(Question(text, audio))
-
-        self.answers = []
-        if os.path.exists("answers/answers.txt"):
-            with open("answers/answers.txt", "r") as f:
-                for line in f:
-                    answer = Answer()
-                    answer.text, answer.correct = line.strip().split(",")
-                    if answer.correct == "True":
-                        answer.correct = True
-                        self.correct += 1
-                    elif answer.correct == "False":
-                        answer.correct = False
-                        self.wrong += 1
-                    self.answers.append(answer)
-                    self.current_position += 1
+    def __init__(self, questions:Questions):
+        self._questions = questions
 
         self.time_start = 0.0
         self.time_taken = 0.0
@@ -104,7 +33,7 @@ class App:
         self._window.geometry("800x200")
         self._window.resizable(False, False)
         self._window.attributes("-type", "dialog")
-        self._window.title("Dyktadno")
+        self._window.title("Dyktando")
         self._window.configure(bg="black")
         self._window.grid_columnconfigure(0, weight=1)
         self._window.grid_columnconfigure(1, weight=1)
@@ -125,7 +54,7 @@ class App:
 
         self._correct_label = tk.Label(
             self._window,
-            text=f"Correct: {self.correct}",
+            text=f"Correct: {self._questions.correct_count}",
             font=("Helvetica", 20),
         )
         self._correct_label.configure(background="black", foreground="white")
@@ -133,7 +62,7 @@ class App:
 
         self._wrong_label = tk.Label(
             self._window,
-            text=f"Wrong: {self.wrong}",
+            text=f"Wrong: {self._questions.failures_count}",
             font=("Helvetica", 20),
         )
         self._wrong_label.configure(background="black", foreground="white")
@@ -147,6 +76,8 @@ class App:
         self._next_question_button.bind("<ButtonPress>", self.next_question)
         self._next_question_button.grid(row=4, column=2, columnspan=3)
 
+        # self._next_question_button["state"] = "disabled"
+
         self._check_button = tk.Button(self._window, text="Check answer")
         self._check_button.configure(background="black", foreground="white")
         self._check_button.configure(
@@ -155,7 +86,7 @@ class App:
         self._check_button.bind("<ButtonPress>", self.check_answer)
         self._check_button.grid(row=4, column=0, columnspan=3)
 
-        if self.current_position >= len(self.questions):
+        if self._questions.index >= len(self._questions):
             self.finish_popup()
 
     def key_pressed(self, event):
@@ -165,7 +96,7 @@ class App:
     def play_question(self, event=None):
         if self._question_button.config("state")[-1] == "disabled":
             return
-        Thread(target=play, args=(self.questions[self.current_position].audio,)).start()
+        self._questions.get_question().play()
 
     def check_answer(self, event=None):
         if self._check_button.config("state")[-1] == "disabled":
@@ -176,29 +107,23 @@ class App:
         self._next_question_button["state"] = "normal"
         self._user_input["state"] = "disabled"
         self._check_button["state"] = "disabled"
-        self.answers.append(Answer())
-        self.answers[self.current_position].text = user_answer
-        if user_answer == self.questions[self.current_position].text:
-            self.correct += 1
-            self.answers[self.current_position].correct = True
-            self._correct_label["text"] = f"Correct: {self.correct}"
+        correct = (user_answer == self._questions.get_question().text)
+        answer = Answer(text = user_answer, correct = correct)
+        if correct:
+            self._correct_label["text"] = f"Correct: {self._questions.correct_count}"
             song = AudioSegment.from_mp3(get_resource_path("correct.mp3"))
         else:
-            self.wrong += 1
-            self.answers[self.current_position].correct = False
-            self._wrong_label["text"] = f"Wrong: {self.wrong}"
+            self._wrong_label["text"] = f"Wrong: {self._questions.failures_count}"
             song = AudioSegment.from_mp3(get_resource_path("incorrect.mp3"))
         Thread(target=play, args=(song,)).start()
 
-        with open("answers/answers.txt", "w") as f:
-            for answer in self.answers:
-                f.write(f"{answer.text},{answer.correct}\n")
+        self._questions.put_answer(answer)
 
-        if self.current_position >= len(self.questions) - 1:
+        if self._questions.index >= len(self._questions) - 1:
             self.finish_popup()
 
     def finish_popup(self):
-        self._next_question_button["state"] = "disabled"
+        # self._next_question_button["state"] = "disabled"
         self._user_input["state"] = "disabled"
         self._question_button["state"] = "disabled"
         self._check_button["state"] = "disabled"
@@ -221,7 +146,7 @@ class App:
 
         correct_label = tk.Label(
             popup,
-            text=f"Correct: {self.correct}",
+            text=f"Correct: {self._questions.correct_count}",
             font=("Helvetica", 20),
         )
         correct_label.configure(background="black", foreground="white")
@@ -229,7 +154,7 @@ class App:
 
         wrong_label = tk.Label(
             popup,
-            text=f"Wrong: {self.wrong}",
+            text=f"Wrong: {self._questions.failures_count}",
             font=("Helvetica", 20),
         )
         wrong_label.configure(background="black", foreground="white")
@@ -237,7 +162,7 @@ class App:
 
         percent_label = tk.Label(
             popup,
-            text=f"Percent: {int(self.correct / (self.correct + self.wrong) * 100)}%",
+            text=f"Percent: {int(self._questions.correct_count / len(self._questions) * 100)}%",
             font=("Helvetica", 20),
         )
         percent_label.configure(background="black", foreground="white")
@@ -246,30 +171,15 @@ class App:
         popup.mainloop()
 
     def next_question(self, event=None):
-        if self._next_question_button.config("state")[-1] == "disabled":
-            return
-        self.current_position += 1
+        # if self._next_question_button.config("state")[-1] == "disabled":
+        #     return
+        # self._next_question_button["state"] = "disabled"
         self._check_button["state"] = "normal"
+        self._questions.next_question()
         self._user_input["state"] = "normal"
         self._user_input.delete("1.0", "end")
-        self.answers.append(Answer("-", True))
-        with open("answers/answers.txt", "w") as f:
-            for answer in self.answers:
-                f.write(f"{answer.text},{answer.correct}\n")
-        self._correct_label["text"] = f"Correct: {self.correct}"
-        if self.current_position >= len(self.questions):
-            self.finish_popup()
-            return
         self.play_question()
 
     @property
     def window(self):
         return self._window
-
-
-def main():
-    app = App()
-    app.window.mainloop()
-
-
-main()

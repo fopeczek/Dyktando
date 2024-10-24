@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "dyktando"
+version = "1.0.0"
+description = "Dyktando dla Sofijki"
+authors = ["Adam Ryczkowski <adam@statystyka.net>", "Mikołaj Krawczuk <mikolaj@statystyka.net>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+click = "^8.1.7"
+gTTS = "^2.5.3"
+pydub = "^0.25.1"
+pydantic = "^2.9.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+dyktando = "dyktando.main:cli"
